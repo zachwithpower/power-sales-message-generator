@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Sales Message Generator</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #f9fafb;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+        const { Search, User, Target, MessageSquare, Hash, Zap, FileText, Loader2, Copy, CheckCircle } = lucide;
+
+        const SalesMessageGenerator = () => {
+            const [inputs, setInputs] = useState({
+                companyName: '',
+                personName: '',
+                personTitle: '',
+                sentiment: 'professional',
+                maxWords: 150,
+                cta: '',
+                background: 'Power specializes in solving the Month 3 enrollment plateau that kills trial momentum. We build continuous patient recruitment flows from Day 1 after Site Initiation Visit, using digital referral systems and the 60-day pipeline metric to maintain steady enrollment. Unlike traditional approaches that add more sites or increase ad spend, we focus on proactive infrastructure that delivers 2x sustained enrollment rates.'
+            });
+
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [messages, setMessages] = useState(null);
+            const [companyData, setCompanyData] = useState(null);
+            const [copiedIndex, setCopiedIndex] = useState(null);
+
+            const sentimentOptions = [
+                { value: 'professional', label: 'Professional' },
+                { value: 'conversational', label: 'Conversational' },
+                { value: 'humor', label: 'Humor' },
+                { value: 'direct', label: 'Direct' },
+                { value: 'consultative', label: 'Consultative' }
+            ];
+
+            const ctaOptions = [
+                'Schedule a 15-minute call to discuss trial enrollment challenges',
+                'Share a case study relevant to your upcoming trials',
+                'Offer a free enrollment assessment',
+                'Invite to a webinar on avoiding Month 3 plateaus',
+                'Request a brief conversation about recruitment strategies',
+                'Propose a pilot program for your next trial'
+            ];
+
+            const handleInputChange = (field, value) => {
+                setInputs(prev => ({ ...prev, [field]: value }));
+            };
+
+            const researchCompany = async (companyName) => {
+                try {
+                    const response = await fetch("https://api.anthropic.com/v1/messages", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            model: "claude-sonnet-4-20250514",
+                            max_tokens: 1000,
+                            messages: [
+                                {
+                                    role: "user",
+                                    content: `Research ${companyName} and provide key information about their clinical trials, recent earnings reports, and any enrollment challenges. Focus on:
+                                    1. Recent clinical trial announcements or updates
+                                    2. Pipeline information from latest quarterly reports
+                                    3. Any mentions of enrollment challenges or delays
+                                    4. Therapeutic areas they're focusing on
+                                    5. Recent partnerships or acquisitions related to trials
+                                    
+                                    Respond ONLY with valid JSON in this format:
+                                    {
+                                        "company": "Company Name",
+                                        "recentTrials": ["trial 1", "trial 2"],
+                                        "therapeuticAreas": ["area 1", "area 2"],
+                                        "enrollmentChallenges": "description of any enrollment issues found",
+                                        "recentNews": "key recent developments",
+                                        "keyInsights": "actionable insights for sales approach"
+                                    }
+                                    
+                                    DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
+                                }
+                            ]
+                        })
+                    });
+
+                    const data = await response.json();
+                    let responseText = data.content[0].text;
+                    responseText = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+                    
+                    return JSON.parse(responseText);
+                } catch (error) {
+                    console.error("Error researching company:", error);
+                    return {
+                        company: companyName,
+                        recentTrials: ["Unable to fetch specific trial data"],
+                        therapeuticAreas: ["General pharmaceutical research"],
+                        enrollmentChallenges: "Standard industry enrollment challenges likely apply",
+                        recentNews: "Research data unavailable",
+                        keyInsights: "Focus on general enrollment plateau solutions"
+                    };
+                }
+            };
+
+            const generateMessages = async (companyData, inputs) => {
+                try {
+                    const prompt = `You are a sales expert for Power, a patient recruitment company specializing in solving the Month 3 enrollment plateau. 
+
+            COMPANY RESEARCH:
+            ${JSON.stringify(companyData, null, 2)}
+
+            TARGET PROSPECT:
+            - Name: ${inputs.personName}
+            - Title: ${inputs.personTitle}
+            - Company: ${inputs.companyName}
+
+            MESSAGE REQUIREMENTS:
+            - Sentiment: ${inputs.sentiment}
+            - Max words: ${inputs.maxWords} (STRICTLY ENFORCE THIS LIMIT)
+            - Call-to-action: ${inputs.cta}
+            - Background: ${inputs.background}
+
+            Create 3 personalized messages:
+            1. CONSERVATIVE: Professional, data-focused, subtle approach
+            2. BALANCED: Engaging but not pushy, good balance of insight and pitch
+            3. AGGRESSIVE: Bold, direct, provocative - takes risks to stand out
+
+            Each message should:
+            - Reference specific company insights from the research
+            - Tailor tone to the person's seniority level
+            - Include the Month 3 plateau insight naturally
+            - Stay within the word limit
+            - End with the specified CTA
+            - Feel personal and researched, not templated
+
+            Respond ONLY with valid JSON:
+            {
+                "conservative": "message text here",
+                "balanced": "message text here", 
+                "aggressive": "message text here"
+            }
+
+            DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`;
+
+                    const response = await fetch("https://api.anthropic.com/v1/messages", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            model: "claude-sonnet-4-20250514",
+                            max_tokens: 2000,
+                            messages: [
+                                {
+                                    role: "user",
+                                    content: prompt
+                                }
+                            ]
+                        })
+                    });
+
+                    const data = await response.json();
+                    let responseText = data.content[0].text;
+                    responseText = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+                    
+                    return JSON.parse(responseText);
+                } catch (error) {
+                    console.error("Error generating messages:", error);
+                    return {
+                        conservative: "Error generating conservative message. Please try again.",
+                        balanced: "Error generating balanced message. Please try again.",
+                        aggressive: "Error generating aggressive message. Please try again."
+                    };
+                }
+            };
+
+            const handleGenerate = async () => {
+                if (!inputs.companyName || !inputs.personName || !inputs.cta) {
+                    alert('Please fill in Company Name, Person Name, and Call-to-Action');
+                    return;
+                }
+
+                setIsGenerating(true);
+                setMessages(null);
+                setCompanyData(null);
+
+                try {
+                    const research = await researchCompany(inputs.companyName);
+                    setCompanyData(research);
+
+                    const generatedMessages = await generateMessages(research, inputs);
+                    setMessages(generatedMessages);
+                } catch (error) {
+                    console.error("Error in generation process:", error);
+                    alert('Error generating messages. Please try again.');
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+
+            const copyToClipboard = async (text, index) => {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    setCopiedIndex(index);
+                    setTimeout(() => setCopiedIndex(null), 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+            };
+
+            const getWordCount = (text) => {
+                return text.trim().split(/\s+/).length;
+            };
+
+            const getMessageStyle = (type) => {
+                switch (type) {
+                    case 'conservative':
+                        return 'border-blue-200 bg-blue-50';
+                    case 'balanced':
+                        return 'border-green-200 bg-green-50';
+                    case 'aggressive':
+                        return 'border-red-200 bg-red-50';
+                    default:
+                        return 'border-gray-200 bg-gray-50';
+                }
+            };
+
+            const getMessageLabel = (type) => {
+                switch (type) {
+                    case 'conservative':
+                        return { label: 'Conservative', color: 'text-blue-600', bg: 'bg-blue-100' };
+                    case 'balanced':
+                        return { label: 'Balanced', color: 'text-green-600', bg: 'bg-green-100' };
+                    case 'aggressive':
+                        return { label: 'Aggressive', color: 'text-red-600', bg: 'bg-red-100' };
+                    default:
+                        return { label: 'Message', color: 'text-gray-600', bg: 'bg-gray-100' };
+                }
+            };
+
+            return React.createElement('div', { className: "min-h-screen bg-gray-50 py-8" },
+                React.createElement('div', { className: "max-w-6xl mx-auto p-6 bg-white rounded-lg shadow-lg" },
+                    React.createElement('div', { className: "mb-8 text-center" },
+                        React.createElement('h1', { className: "text-3xl font-bold text-gray-900 mb-2" }, "Power Sales Message Generator"),
+                        React.createElement('p', { className: "text-gray-600" }, "AI-powered personalized outreach for clinical trial recruitment experts")
+                    ),
+                    React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-2 gap-8" },
+                        // Input Section
+                        React.createElement('div', { className: "space-y-6" },
+                            React.createElement('div', { className: "bg-gray-50 p-6 rounded-lg" },
+                                React.createElement('h2', { className: "text-xl font-semibold mb-4 flex items-center" },
+                                    React.createElement(Target, { className: "mr-2 text-blue-600", size: 20 }),
+                                    "Prospect Information"
+                                ),
+                                React.createElement('div', { className: "space-y-4" },
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" },
+                                            React.createElement(Search, { className: "inline mr-1", size: 16 }),
+                                            "Company Name *"
+                                        ),
+                                        React.createElement('input', {
+                                            type: "text",
+                                            value: inputs.companyName,
+                                            onChange: (e) => handleInputChange('companyName', e.target.value),
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            placeholder: "e.g., Pfizer, Novartis, Moderna"
+                                        })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" },
+                                            React.createElement(User, { className: "inline mr-1", size: 16 }),
+                                            "Person Name *"
+                                        ),
+                                        React.createElement('input', {
+                                            type: "text",
+                                            value: inputs.personName,
+                                            onChange: (e) => handleInputChange('personName', e.target.value),
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            placeholder: "e.g., Sarah Johnson"
+                                        })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" }, "Person Title"),
+                                        React.createElement('input', {
+                                            type: "text",
+                                            value: inputs.personTitle,
+                                            onChange: (e) => handleInputChange('personTitle', e.target.value),
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            placeholder: "e.g., VP Clinical Operations"
+                                        })
+                                    )
+                                )
+                            ),
+                            React.createElement('div', { className: "bg-gray-50 p-6 rounded-lg" },
+                                React.createElement('h2', { className: "text-xl font-semibold mb-4 flex items-center" },
+                                    React.createElement(MessageSquare, { className: "mr-2 text-blue-600", size: 20 }),
+                                    "Message Settings"
+                                ),
+                                React.createElement('div', { className: "space-y-4" },
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" }, "Sentiment"),
+                                        React.createElement('select', {
+                                            value: inputs.sentiment,
+                                            onChange: (e) => handleInputChange('sentiment', e.target.value),
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        },
+                                            sentimentOptions.map(option => 
+                                                React.createElement('option', { key: option.value, value: option.value }, option.label)
+                                            )
+                                        )
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" },
+                                            React.createElement(Hash, { className: "inline mr-1", size: 16 }),
+                                            `Max Words: ${inputs.maxWords}`
+                                        ),
+                                        React.createElement('input', {
+                                            type: "range",
+                                            min: "50",
+                                            max: "300",
+                                            value: inputs.maxWords,
+                                            onChange: (e) => handleInputChange('maxWords', parseInt(e.target.value)),
+                                            className: "w-full"
+                                        }),
+                                        React.createElement('div', { className: "flex justify-between text-xs text-gray-500 mt-1" },
+                                            React.createElement('span', null, "50"),
+                                            React.createElement('span', null, "300")
+                                        )
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" },
+                                            React.createElement(Zap, { className: "inline mr-1", size: 16 }),
+                                            "Call-to-Action *"
+                                        ),
+                                        React.createElement('select', {
+                                            value: inputs.cta,
+                                            onChange: (e) => handleInputChange('cta', e.target.value),
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        },
+                                            React.createElement('option', { value: "" }, "Select a CTA..."),
+                                            ctaOptions.map((cta, index) => 
+                                                React.createElement('option', { key: index, value: cta }, cta)
+                                            )
+                                        )
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-1" },
+                                            React.createElement(FileText, { className: "inline mr-1", size: 16 }),
+                                            "Background Context"
+                                        ),
+                                        React.createElement('textarea', {
+                                            value: inputs.background,
+                                            onChange: (e) => handleInputChange('background', e.target.value),
+                                            rows: 4,
+                                            className: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            placeholder: "Background information about Power..."
+                                        })
+                                    )
+                                )
+                            ),
+                            React.createElement('button', {
+                                onClick: handleGenerate,
+                                disabled: isGenerating || !inputs.companyName || !inputs.personName || !inputs.cta,
+                                className: "w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+                            },
+                                isGenerating ? 
+                                    React.createElement(React.Fragment, null,
+                                        React.createElement(Loader2, { className: "animate-spin mr-2", size: 20 }),
+                                        "Generating Messages..."
+                                    ) :
+                                    React.createElement(React.Fragment, null,
+                                        React.createElement(Zap, { className: "mr-2", size: 20 }),
+                                        "Generate Messages"
+                                    )
+                            )
+                        ),
+                        // Results Section
+                        React.createElement('div', { className: "space-y-6" },
+                            companyData && React.createElement('div', { className: "bg-blue-50 p-6 rounded-lg" },
+                                React.createElement('h3', { className: "text-lg font-semibold mb-3 text-blue-800" }, `Company Research: ${companyData.company}`),
+                                React.createElement('div', { className: "space-y-2 text-sm" },
+                                    React.createElement('div', null, React.createElement('strong', null, "Recent Trials: "), companyData.recentTrials.join(', ')),
+                                    React.createElement('div', null, React.createElement('strong', null, "Therapeutic Areas: "), companyData.therapeuticAreas.join(', ')),
+                                    React.createElement('div', null, React.createElement('strong', null, "Enrollment Challenges: "), companyData.enrollmentChallenges),
+                                    React.createElement('div', null, React.createElement('strong', null, "Key Insights: "), companyData.keyInsights)
+                                )
+                            ),
+                            messages && React.createElement('div', { className: "space-y-4" },
+                                React.createElement('h3', { className: "text-xl font-semibold" }, "Generated Messages"),
+                                Object.entries(messages).map(([type, message], index) => {
+                                    const style = getMessageLabel(type);
+                                    const wordCount = getWordCount(message);
+                                    const isOverLimit = wordCount > inputs.maxWords;
+                                    
+                                    return React.createElement('div', { key: type, className: `p-4 rounded-lg border-2 ${getMessageStyle(type)}` },
+                                        React.createElement('div', { className: "flex justify-between items-center mb-3" },
+                                            React.createElement('span', { className: `px-3 py-1 rounded-full text-sm font-medium ${style.bg} ${style.color}` }, style.label),
+                                            React.createElement('div', { className: "flex items-center space-x-2" },
+                                                React.createElement('span', { className: `text-sm ${isOverLimit ? 'text-red-600 font-bold' : 'text-gray-600'}` }, `${wordCount}/${inputs.maxWords} words`),
+                                                React.createElement('button', {
+                                                    onClick: () => copyToClipboard(message, index),
+                                                    className: "p-2 text-gray-600 hover:text-gray-800 hover:bg-white rounded"
+                                                },
+                                                    copiedIndex === index ? 
+                                                        React.createElement(CheckCircle, { size: 16, className: "text-green-600" }) :
+                                                        React.createElement(Copy, { size: 16 })
+                                                )
+                                            )
+                                        ),
+                                        React.createElement('p', { className: "text-gray-800 leading-relaxed whitespace-pre-wrap" }, message)
+                                    );
+                                })
+                            ),
+                            !messages && !isGenerating && React.createElement('div', { className: "text-center py-12 text-gray-500" },
+                                React.createElement(MessageSquare, { size: 48, className: "mx-auto mb-4 opacity-50" }),
+                                React.createElement('p', null, "Fill in the form and click \"Generate Messages\" to create personalized outreach")
+                            )
+                        )
+                    )
+                )
+            );
+        };
+
+        ReactDOM.render(React.createElement(SalesMessageGenerator), document.getElementById('root'));
+    </script>
+</body>
+</html>
